@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Language" content="zh-cn" />
+    <title>分类匹配</title>
+    <style>
+      body {
+        font-size: 12px;
+      }
+      .inputArea{
+        width: 400px;
+        height: 200px;
+        max-width: 400px;
+        max-height: 200px;
+      }
+      .noresult{
+        color: #CBCBCB;
+      }
+      ol, ul{
+        list-style: none;
+      }
+      .links{
+        margin-left: 10px;
+      }
+    </style>
+    <script src="classify.js"></script>
+    <script>
+      var _hmt = _hmt || [];
+      (function() {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?d036489fe54510b1fd5255c5d43e355d";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+      })();
+    </script>
+</head>
+<body>
+
+
+    <form>
+      <h2>1. 请输入你要分类的数据</h2>
+      <textarea id="tosearch" class="inputArea" rows="10" cols="20" placeholder="请输入你要分类的数据"></textarea>
+      <h2>2. 请输入你要搜索的关键词</h2>
+      <textarea id="keywords" class="inputArea" rows="10" cols="20" placeholder="请输入你要匹配的关键词"></textarea>
+    </form>
+
+    <div>
+      <button onclick="keywordsMatching()">开始匹配</button>
+    </div>
+
+    <form name="displaySetting" action="" method="get">
+      <span>1. 是否显示无匹配关键词 </span>
+      <label><input name="displayChoice" type="radio" value="0" checked />不显示 </label>
+      <label><input name="displayChoice" type="radio" value="1" disabled />显示(暂关闭) </label>
+    </form>
+
+    <form name="DelRepeatSetting" action="" method="get">
+      <span>2. 是否重复匹配同一关键词 </span>
+      <label><input name="delRepeat" type="radio" value="0" checked />不去重 </label>
+      <label><input name="delRepeat" type="radio" value="1" />去重 </label>
+    </form>
+
+    <div>
+      <div>
+        <span>3. 相关实用工具</span>
+        <a class="links" href="https://shimo.im/sheets/K8kxy6wK3CvdYghQ/MODOC">(1) 参考关键词</a>
+        <a class="links" href="http://www.excelfb.com/excelMergeSameSheetframe.html">(2) excel合并工具</a>
+        <a class="links" href="http://www.jiniannet.com/Page/clearhtml">(3) 去除文本html标签</a>
+      </div>
+    </div>
+
+    <div id="countResult"></div>
+    <div id="result"></div>
+    <div id="notClassified"></div>
+    <script>
+
+      /* 总体代码结构
+        1. 显示html部分
+        2. 事件(逻辑：包含数据获取与处理逻辑)(显示依赖1)
+        3. 设置(显示依赖2)
+       */
+
+      /***** 全局变量 *****/
+      var savedCountObj = {};
+      var keys = ["keyword","count"];
+
+
+      /******* 1. 显示部分 *******/
+
+      // 显示汇总的count数并排序
+      function printAllCountResult(){
+
+        // 排序
+        //console.log(savedCountObj);
+        var newSavedCountObj = bubbleSortArrObj( savedCountObj );
+
+        // write html for view
+        var str = "";
+        str += "<ul>";
+        for( var i = 0; i < newSavedCountObj.length; i++ ){
+          if(newSavedCountObj[i][keys[0]] != ""){
+            var order = i + 1;
+            str += "<li>" + order + ". 【" + newSavedCountObj[i][keys[0]] + "】 总计 " + newSavedCountObj[i][keys[1]] + "</li>";
+          }
+        }
+        str += "</ul>";
+        document.getElementById("countResult").innerHTML = str;
+      }
+
+
+      // 显示分类
+      // <h2> keywords[i] </h2>
+      // <ul>
+      //  <li> result[i] </li>
+      // </ul>
+      // a2dArrat = tosearch 要搜索的词分类后转换为的一个二维数组
+      // keywords = keywords 要搜索的词
+      function printResultForSearch( a2dArray, keywords ){
+        
+        // 清空, init html
+        var str = "";
+        document.getElementById("result").innerHTML = '';
+        var displaySet = getDisplay();
+        //console.log('显示: ', displaySet);
+        //console.log(a2dArray);
+
+        // write html for view
+        var rowCount = 0;
+        // 遍历结果 [...],[...]
+        for( var i = 0; i < a2dArray.length; i++ ){
+          var order = i + 1;
+          //console.log(a2dArray[i].length);
+          if( a2dArray[i].length > 0 ){
+            str += "<h3>" + order + '. ' + keywords[i] + "</h3>";
+            str += "<span>" + "匹配 " + keywords[i] + " " + ' 总计 ' + a2dArray[i].length + "</span>";
+            // 存储记数结果
+            saveCount( i, keywords[i], a2dArray[i].length );
+            //console.log("savedCountObj: ", savedCountObj);
+            str += "<ol>";
+            // 遍历里面每一个
+            for( var j = 0; j < a2dArray[i].length; j++ ){
+              rowCount += 1;
+              //console.log(rowCount);
+              str += "<li>" + rowCount + '. ' + a2dArray[i][j] + "</li>";
+            }
+
+            str += "</ol>";
+          }
+          // 配置 - 如果显示无匹配关键词
+          if( displaySet == 1 ){
+            str += "<h3 class='noresult'>" + order + '. ' + keywords[i] + ' 未匹配到.' + "</h3>";
+          }
+        }
+        document.getElementById("result").innerHTML = str;
+
+      }
+
+      // 显示未分类
+      function printNotInKeywords( anArray ){
+        // 1. 清空
+        document.getElementById("notClassified").innerHTML = '';
+        //console.log(anArray.length);
+        // 2. 写入
+        if( anArray.length > 0 ){
+          var str = "<h3>" + "未分类" + "</h3>";
+          str += "<ol>";
+          for( var i = 0; i < anArray.length; i++ ){
+            // console.log(anArray[i]);
+            var order = i + 1;
+            str += "<li>" + order + '. ' + anArray[i] + "</li>";;
+          }
+          str += "</ol>";
+          document.getElementById("notClassified").innerHTML = str;
+        }
+      }
+
+      /******* 2 事件部分 *******/
+
+      // 按钮事件
+      function keywordsMatching(){
+
+        // 1. 获取2哥输入框的数据
+        var tosearch = document.getElementById("tosearch");  //获取输入框元素
+        var keywords = document.getElementById("keywords");  //获取输入框元素
+        // 定义变量
+        var seperator = "&&";
+        // for debug
+        var print = document.getElementById("result");   //获取id为html的元素, 调试用
+
+
+        // 2. 数据格式: 字符串转化成数组 (把字符串先替换分隔符，再变成数组)
+        // 准备好 tosearch, keywords 数组
+        var tosearchStr = tosearch.value.replace(/\n/g, seperator);
+        var tosearchArray = stringToArry( tosearchStr, seperator );
+        // print.innerHTML = str;  //将输入框的值赋给div标签
+        var keywordsStr = keywords.value.replace(/\n/g, seperator);
+        var keywordsArray = stringToArry( keywordsStr, seperator );
+        // console.log( tosearchArray, keywordsArray );
+        // console.log(keywordsArray);
+
+
+        // 3. 初始化存储关键词count的数据
+        var countListArr = [];
+        // initArrObj(init2DArray(keywordsArray),["keyword","count"]);
+        // console.log( initEmptyArray(countListArr, init2DArray(keywordsArray).length) );
+        // console.log( initArrObj(initEmptyArray(countListArr, init2DArray(keywordsArray).length), keys) );
+        savedCountObj = initArrObj(initEmptyArray(countListArr, init2DArray(keywordsArray).length), keys);
+        console.log("savedCountObj: ", savedCountObj);
+
+        // 对arrObj进行排序
+
+
+        // 3. 对数据进行分类
+        // 分类后返回二维数组
+        var result = classify(tosearchArray, keywordsArray, init2DArray(keywordsArray), getDelRepeatSet());
+        // console.log(result);
+
+        // 未分类的返回一个一维数组
+        var notClassifiedUpdate = notClassifiedArr( tosearchArray, keywordsArray );
+
+        // 4. 打印数据
+        printResultForSearch( result, keywordsArray );
+        printNotInKeywords( notClassifiedUpdate );
+        printAllCountResult();
+
+      }
+
+      
+
+      /******* 3. 设置 *******/
+
+      // 获取显示设置
+      function getDisplay(){
+        for( i = 0; i < document.displaySetting.displayChoice.length; i++ ){
+          //console.log(document.displaySetting.displayChoice[i].checked);
+          if( document.displaySetting.displayChoice[i].checked ){
+            //console.log(i);
+            return i;
+          }
+        }
+      }
+
+      // 获取去重设置
+      function getDelRepeatSet(){
+        for( i = 0; i < document.DelRepeatSetting.delRepeat.length; i++ ){
+          //console.log(document.displaySetting.displayChoice[i].checked);
+          if( document.DelRepeatSetting.delRepeat[i].checked ){
+            //console.log(i);
+            return i;
+          }
+        }
+      }
+
+      function saveCount( index, key, value ){
+        savedCountObj[index][keys[0]] = key;
+        savedCountObj[index][keys[1]] = value;
+      }
+
+
+    </script>
+</body>
+</html>
